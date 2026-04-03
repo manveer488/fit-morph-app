@@ -11,7 +11,7 @@ const GEMINI_MODEL = "gemini-1.5-flash-latest";
  */
 export async function generateTransformationPlan(scanData, userProfile, base64Image = null) {
   // VERSION WATERMARK - Help user verify latest deployment
-  console.log("FitMorph Engine: BUILD_ID_8821 - Universal Fallback Active");
+  console.log("FitMorph Engine: BUILD_ID_9901 - Pure Flash 1.5 Active");
   console.log("Generating Expertise-Driven Transformation Plan", { scanData, userProfile, hasImage: !!base64Image });
   
   const prompt = `
@@ -98,66 +98,53 @@ Format everything cleanly. Provide ONLY the JSON. No markdown backticks.`;
 
 async function callGemini(apiKey, prompt, base64Image = null) {
   if (!apiKey) {
-    throw new Error("Gemini API Key is missing. Check your Vercel Environment Variables.");
+    throw new Error("Gemini API Key is missing. Please check your Vercel Environment Variables (ensure you have the VITE_ prefix!).");
   }
 
-  // Comprehensive model pool to handle all regions and account types
-  // Including common variants and the user's requested "gemini-3-flash" just in case
-  const modelsToTry = [
-    "gemini-1.5-flash",
-    "gemini-1.5-flash-latest",
-    "gemini-2.0-flash", 
-    "gemini-2.0-flash-exp",
-    "gemini-1.5-flash-8b",
-    "gemini-3-flash", // Non-standard, but specific user request
-    "gemini-1.5-pro",
-    "gemini-pro"
-  ];
+  // As requested, using the new supported model: gemini-1.5-flash
+  const MODEL_ID = "gemini-1.5-flash";
+  const API_VERSION = "v1beta"; 
+  const API_URL = `https://generativelanguage.googleapis.com/${API_VERSION}/models/${MODEL_ID}:generateContent?key=${apiKey}`;
 
-  let lastError = null;
+  console.log(`Starting AI transformation analysis with ${MODEL_ID}...`);
 
-  for (const model of modelsToTry) {
-    try {
-      console.log(`Attempting Gemini (${model}) via v1beta...`);
-      const parts = [{ text: prompt }];
-      
-      if (base64Image) {
-        const cleanBase64 = base64Image.replace(/^data:image\/\w+;base64,/, "");
-        parts.push({
-          inline_data: {
-            mime_type: "image/jpeg",
-            data: cleanBase64
-          }
-        });
-      }
-
-      const response = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            contents: [{ parts }]
-          })
+  try {
+    const parts = [{ text: prompt }];
+    if (base64Image) {
+      const cleanBase64 = base64Image.replace(/^data:image\/\w+;base64,/, "");
+      parts.push({
+        inline_data: {
+          mime_type: "image/jpeg",
+          data: cleanBase64
         }
-      );
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.warn(`Model ${model} failed:`, errorText);
-        lastError = new Error(errorText);
-        continue; // Try next model
-      }
-
-      const data = await response.json();
-      return processGeminiResponse(data);
-    } catch (err) {
-      console.warn(`Connection to ${model} failed:`, err);
-      lastError = err;
+      });
     }
-  }
 
-  throw lastError || new Error("All AI models failed to respond. Please check your API key and network.");
+    const response = await fetch(API_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        contents: [{ parts }]
+      })
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`Gemini API Error (${response.status}):`, errorText);
+      let errorMsg = `API Error: ${response.status}`;
+      try {
+        const errorJson = JSON.parse(errorText);
+        errorMsg = errorJson.error?.message || errorMsg;
+      } catch (e) {}
+      throw new Error(errorMsg);
+    }
+
+    const data = await response.json();
+    return processGeminiResponse(data);
+  } catch (err) {
+    console.error("Gemini service failure:", err);
+    throw err;
+  }
 }
 
 function processGeminiResponse(data) {
